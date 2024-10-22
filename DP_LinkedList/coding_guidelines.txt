@@ -1,0 +1,36 @@
+coding_guidelines.txt:
+
+1.header is stored in separate header.h file.
+2.header consist of:
+    pre-defined header
+    macros for constant values used in the program named with prefix DP_ eg(#define DP_SUCCESS 0)
+    every header consist of DP_SUCCESS 0, DP_FAILURE -1
+    MACROS for Error should be also there start from -99 eg DP_NULL_POINTER_ACCESS -99 after that 
+    any other error we have -99+1, -99+2 ....
+    structure and union declaration
+3.use appropriate datatype for small and large values.
+4.prefix before datatype name:
+int - iVariableName,float - f,char - c,double - d,short - s,unsigned int - ui, unsigned char - uc, const int - ki
+integer pointer - *pi...,Structure name - S_STRUCTNAME, member variable of struct - m_SMemberVarName
+Pointer to Struct - *pSPointerToStruct
+6.Initialize the variable with default value before using dont store garbage value
+7.Handle Return Value from all functions and built-in functions
+Based on the ReturnValue if ReturnValue is DP_SUCCESS print result, if DP_FAILURE print error message
+8.Every Function must return a value either DP_SUCCESS or DP_FAILURE
+9.If the Return Value from the function is error code pass the error code to PrintError Message Function and print 
+appropriate error message to the user.
+10.Optimize the code, Handle return value from all functions,Add input validation for input entered by the user and if
+input is invalid prompt the user to enter the input again.
+11.The Program should execute again and again until the exit condition is given by the user.
+12.Function name must be prefixed with DP_FunctionName(in_InputParameter1, in_InputParameter2,out_OutputParameter1);
+Every Function must have alleast one input or output parameter must not exceed more the 5 input or output parameters
+13.Use Pointer to return one or more value from the function
+14.avoid infinite loop use proper break,continue and exit conditions
+15.Use Doxygen style comment for comments and Function comment - about function
+16.Handle Buffer overflow and underflow conditions, properly null terminate strings.
+Memset buffer with default values.
+17.Add validation for every input entered by the user
+do validation for input and output parameters inside function.
+19.Handle Memory(Memory Management) Efficiently in the Program,
+20.Always follow the above coding coding_guidelines for every program given in C from CHATGPT, if i forgot any coding_guidelines
+i will add it in future.
