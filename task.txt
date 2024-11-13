@@ -1,0 +1,1217 @@
+CHATGPT:
+
+client code:
+
+#include <stdio.h>
+#include <string.h>
+#include <winsock2.h>
+#include <conio.h>
+#include <windows.h>
+
+/* Link Winsock2 library */
+#pragma comment(lib, "Ws2_32.lib")
+#pragma pack(1)
+
+/* Constants */
+#define DP_PORT             8989
+#define DP_IP               "127.0.0.1"
+#define DP_SUCCESS          0
+#define DP_FAILURE          -1
+#define DP_INVALID_SOCKET   -99
+#define DP_MAX_RETRIES      10
+#define DP_RETRY_DELAY      1000
+#define DP_BUFFER_SIZE      sizeof(S_MESSAGE)
+#define DP_HEADER           0x1AB
+#define DP_FOOTER           0x9CD
+
+/* Struct Definition */
+typedef struct {
+    unsigned int    uiHeader;
+    unsigned short  usGroupId;
+    unsigned short  usUnitId;
+    unsigned int    uiMessageLength;
+    unsigned short  usOperand1;
+    unsigned short  usOperand2;
+    unsigned char   ucData;
+    unsigned int    uiCheckSum;
+    unsigned int    uiFooter;
+} S_MESSAGE;
+
+/* Function Prototypes */
+int DP_CalculateCheckSum(S_MESSAGE *m_SMessage);
+void DP_PackMessage(char *arr_cBuffer, S_MESSAGE *m_SMessage);
+void DP_UnPackMessage(char *arr_cBuffer, S_MESSAGE *m_SMessage);
+void cleanup(SOCKET *clientSocket);
+
+int main() {
+    WSADATA wsa = {0};
+    SOCKET clientSocket = DP_INVALID_SOCKET;
+    struct sockaddr_in serverAddress = {0};
+    int retryCount = 0, result = 0;
+    char sendBuffer[DP_BUFFER_SIZE] = {0}, recvBuffer[DP_BUFFER_SIZE] = {0};
+    S_MESSAGE sendMessage = {0}, recvMessage = {0};
+
+    printf("\n----------TCP CLIENT----------\n");
+    printf("\nInitializing Winsock...\n");
+
+    /* Initialize Winsock */
+    result = WSAStartup(MAKEWORD(2, 2), &wsa);
+    if(result != 0) {
+        printf("Error: Winsock not initialized. Error Code: %d\n", WSAGetLastError());
+        return DP_FAILURE;
+    }
+    printf("Winsock initialized.\n");
+
+    /* Create Client Socket */
+    while (retryCount < DP_MAX_RETRIES) {
+        clientSocket = socket(AF_INET, SOCK_STREAM, 0);
+        if (clientSocket == INVALID_SOCKET) {
+            printf("Error: Could not create socket. Error Code: %d\n", WSAGetLastError());
+            WSACleanup();
+            return DP_FAILURE;
+        }
+        printf("Client socket created.\n");
+
+        /* Server Address Configuration */
+        serverAddress.sin_family = AF_INET;
+        serverAddress.sin_addr.s_addr = inet_addr(DP_IP);
+        serverAddress.sin_port = htons(DP_PORT);
+
+        /* Attempt Connection */
+        result = connect(clientSocket, (struct sockaddr*)&serverAddress, sizeof(serverAddress));
+        if(result == SOCKET_ERROR) {
+            printf("Connection failed, retry %d/%d...\n", retryCount + 1, DP_MAX_RETRIES);
+            retryCount++;
+            closesocket(clientSocket);
+            Sleep(DP_RETRY_DELAY);
+        } else {
+            printf("Connected to server after %d retries\n", retryCount);
+            break;
+        }
+    }
+
+    /* Exit if maximum retries exceeded */
+    if(retryCount == DP_MAX_RETRIES) {
+        printf("Max retry attempts reached. Exiting...\n");
+        cleanup(&clientSocket);
+        return DP_FAILURE;
+    }
+
+    /* Message Sending and Receiving Loop */
+    sendMessage.uiHeader = DP_HEADER;
+    sendMessage.usGroupId = 1;
+    sendMessage.usUnitId = 101;
+    sendMessage.uiMessageLength = sizeof(sendMessage.usOperand1) + sizeof(sendMessage.usOperand2);
+    sendMessage.usOperand1 = 10;
+    sendMessage.usOperand2 = 20;
+    sendMessage.uiFooter = DP_FOOTER;
+    sendMessage.uiCheckSum = DP_CalculateCheckSum(&sendMessage);
+
+    DP_PackMessage(sendBuffer, &sendMessage);
+
+    result = send(clientSocket, sendBuffer, sizeof(sendBuffer), 0);
+    if(result == SOCKET_ERROR) {
+        printf("Send failed. Error Code: %d\n", WSAGetLastError());
+        cleanup(&clientSocket);
+        return DP_FAILURE;
+    }
+
+    result = recv(clientSocket, recvBuffer, sizeof(recvBuffer), 0);
+    if(result == SOCKET_ERROR) {
+        printf("Receive failed. Error Code: %d\n", WSAGetLastError());
+        cleanup(&clientSocket);
+        return DP_FAILURE;
+    }
+
+    DP_UnPackMessage(recvBuffer, &recvMessage);
+
+    if ((recvMessage.uiHeader == DP_HEADER) && (recvMessage.uiFooter == DP_FOOTER) &&
+        (recvMessage.uiCheckSum == DP_CalculateCheckSum(&recvMessage))) {
+        printf("Operation result from server: %d\n", recvMessage.ucData);
+    } else {
+        printf("Invalid response received from server!\n");
+    }
+
+    cleanup(&clientSocket);
+    return DP_SUCCESS;
+}
+
+int DP_CalculateCheckSum(S_MESSAGE *m_SMessage) {
+    return m_SMessage->uiHeader + m_SMessage->usGroupId + m_SMessage->usUnitId + 
+           m_SMessage->uiMessageLength + m_SMessage->usOperand1 + m_SMessage->usOperand2 + m_SMessage->uiFooter;
+}
+
+void DP_PackMessage(char *arr_cBuffer, S_MESSAGE *m_SMessage) {
+    unsigned int uiTempInt = htonl(m_SMessage->uiHeader);
+    memcpy(arr_cBuffer, &uiTempInt, sizeof(uiTempInt));
+
+    unsigned short usTempShort = htons(m_SMessage->usGroupId);
+    memcpy(arr_cBuffer + 4, &usTempShort, sizeof(usTempShort));
+
+    /* Repeat for each field */
+}
+
+void DP_UnPackMessage(char *arr_cBuffer, S_MESSAGE *m_SMessage) {
+    /* Unpack data from buffer and set to m_SMessage fields */
+}
+
+void cleanup(SOCKET *clientSocket) {
+    if (*clientSocket != INVALID_SOCKET) {
+        closesocket(*clientSocket);
+        WSACleanup();
+    }
+}
+COPILOT:
+
+Client:
+
+#include <stdio.h>
+#include <string.h>
+#include <winsock2.h>
+#include <conio.h>
+#include <windows.h>
+
+/*link winsock2 library*/
+#pragma comment(lib, "Ws2_32.lib")
+#pragma pack(1)
+
+#define DP_PORT                 8989
+#define DP_IP                   "127.0.0.1"
+#define DP_SUCCESS              0
+#define DP_FAILURE              -1
+#define DP_INVALID_SOCKET       -99
+#define DP_MAX_RETRIES          10
+#define DP_RETRY_DELAY          1000
+#define DP_BUFFER_SIZE          25
+#define DP_HEADER               0x1AB
+#define DP_FOOTER               0x9CD
+
+typedef struct {
+    unsigned int                uiHeader;
+    unsigned short              usGroupId;
+    unsigned short              usUnitId;
+    unsigned int                uiMessageLength;
+    unsigned short              usOperand1;
+    unsigned short              usOperand2;
+    unsigned char               ucData;
+    unsigned int                uiCheckSum;
+    unsigned int                uiFooter;
+} S_MESSAGE;
+
+int DP_CalculateCheckSum(S_MESSAGE *m_SMessage);
+void DP_PackMessage(char *arr_cBuffer, S_MESSAGE *m_SMessage);
+void DP_UnPackMessage(char *arr_cBuffer, S_MESSAGE *m_SMessage);
+
+int main() {
+    WSADATA wsa = {0};
+    SOCKET skt_ClientSocket = DP_INVALID_SOCKET;
+    struct sockaddr_in m_SServer = {0};
+    int isExitFlag = 0, iRetry = 0, iReturnValue = 0;
+    char arr_cSendBuffer[DP_BUFFER_SIZE] = {0}, arr_cRecvBuffer[DP_BUFFER_SIZE] = {0};
+    S_MESSAGE m_SSendMessage = {0}, m_SRecvMessage = {0};
+    
+    printf("\r\n----------TCP CLIENT----------\r\n");
+    printf("\r\nInitializing Winsock...\r\n");
+    
+    /*winsock initialization*/
+    iReturnValue = WSAStartup(MAKEWORD(2, 2), &wsa);
+    if (iReturnValue != 0) {
+        printf("\r\nError: Winsock not Initialized. Error Code: %d\r\n", WSAGetLastError());
+        return DP_FAILURE;
+    }
+    
+    printf("\r\nWinsock Initialized...\r\n");
+    
+    while (1) {
+        /*create client socket*/
+        skt_ClientSocket = socket(AF_INET, SOCK_STREAM, 0);
+        if (skt_ClientSocket == INVALID_SOCKET) {
+            printf("\r\nCould not create socket. Error Code: %d\r\n", WSAGetLastError());
+            WSACleanup();
+            return DP_FAILURE;
+        }
+        
+        printf("\r\nTCP Client Socket Created!\r\n");
+        
+        m_SServer.sin_family = AF_INET;
+        m_SServer.sin_addr.s_addr = inet_addr(DP_IP);
+        m_SServer.sin_port = htons(DP_PORT);
+        
+        /*retry connecting clientsocket with server socket until DP_MAX_RETRIES*/
+        while (iRetry < DP_MAX_RETRIES) {
+            iReturnValue = connect(skt_ClientSocket, (struct sockaddr*)&m_SServer, sizeof(m_SServer));
+            if (iReturnValue < 0) {
+                printf("\r\nConnection with server failed, Retry %d/%d...\r\n", (iRetry + 1), DP_MAX_RETRIES);
+                iRetry++;
+                closesocket(skt_ClientSocket);
+                Sleep(DP_RETRY_DELAY);
+
+                /*create client socket*/
+                skt_ClientSocket = socket(AF_INET, SOCK_STREAM, 0);
+                if (skt_ClientSocket == INVALID_SOCKET) {
+                    printf("\r\nCould not recreate socket. Error Code: %d\r\n", WSAGetLastError());
+                    WSACleanup();
+                    return DP_FAILURE;
+                }
+            } else {
+                printf("\r\nConnected to Server After %d retries\r\n", iRetry);
+                break;
+            }
+        }
+        
+        /*when maximum retry reached close the client socket!*/
+        if (iRetry == DP_MAX_RETRIES) {
+            printf("\r\nMax retry attempts reached. Exiting...\r\n");
+            closesocket(skt_ClientSocket);
+            if (iReturnValue != 0) {
+                printf("\r\nFailed to close socket. Error Code: %d\r\n", WSAGetLastError());
+                WSACleanup();
+                return DP_FAILURE;
+            }
+
+            break;
+        }
+
+        while (1) {
+            m_SSendMessage.uiHeader = DP_HEADER;
+            m_SSendMessage.usGroupId = 1;
+            m_SSendMessage.usUnitId = 101;
+            m_SSendMessage.uiMessageLength = sizeof(m_SSendMessage.usOperand1) + sizeof(m_SSendMessage.usOperand2);
+            m_SSendMessage.usOperand1 = 10;
+            m_SSendMessage.usOperand2 = 20;
+            m_SSendMessage.ucData = m_SSendMessage.usOperand1 + m_SSendMessage.usOperand2; //Example operation
+            m_SSendMessage.uiFooter = DP_FOOTER;
+            m_SSendMessage.uiCheckSum = DP_CalculateCheckSum(&m_SSendMessage);
+            printf("\r\nchecksum value for send message: %d\r\n", m_SSendMessage.uiCheckSum);
+
+            DP_PackMessage(arr_cSendBuffer, &m_SSendMessage);
+            
+            /*send message to server*/
+            iReturnValue = send(skt_ClientSocket, (char*)arr_cSendBuffer, sizeof(arr_cSendBuffer), 0);
+            if (iReturnValue == SOCKET_ERROR) {
+                printf("\r\nSend failed. Error Code: %d\r\n", WSAGetLastError());
+                break;
+            }
+            
+            /*receive response from the server*/
+            iReturnValue = recv(skt_ClientSocket, (char*)arr_cRecvBuffer, sizeof(arr_cRecvBuffer), 0);
+            if (iReturnValue == SOCKET_ERROR) {
+                printf("\r\nReceive failed. Error Code: %d\r\n", WSAGetLastError());
+                break;
+            }
+
+            DP_UnPackMessage(arr_cRecvBuffer, &m_SRecvMessage);
+
+            if ((m_SRecvMessage.uiHeader == DP_HEADER) && (m_SRecvMessage.uiFooter == DP_FOOTER) && 
+                ((signed)m_SRecvMessage.uiCheckSum == DP_CalculateCheckSum(&m_SRecvMessage))) {
+                /*print the message received from the server*/
+                printf("\r\nOperation result from server: %d\r\n", m_SRecvMessage.ucData);
+            } else {
+                printf("\r\nInvalid response received from server!\r\n");
+            }
+        }
+        
+        /*close client socket*/
+        iReturnValue = closesocket(skt_ClientSocket);
+        if (iReturnValue != 0) {
+            printf("\r\nFailed to close socket. Error Code: %d\r\n", WSAGetLastError());
+            WSACleanup();
+            return DP_FAILURE;
+        }
+        
+        if (isExitFlag == 1) {
+            break;
+        }
+    }
+    
+    /*clean up winsock*/
+    WSACleanup();
+    
+    getch();
+    return DP_SUCCESS;
+}
+
+int DP_CalculateCheckSum(S_MESSAGE *m_SMessage) {
+    return m_SMessage->uiHeader + m_SMessage->usGroupId + m_SMessage->usUnitId + m_SMessage->uiMessageLength
+        + m_SMessage->usOperand1 + m_SMessage->usOperand2 + m_SMessage->uiFooter;
+}
+
+void DP_PackMessage(char *arr_cBuffer, S_MESSAGE *m_SMessage) {
+    unsigned int uiTempInt = 0;
+    unsigned short usTempShort = 0;
+    unsigned char ucTempChar = 0;
+
+    uiTempInt = htonl(m_SMessage->uiHeader);
+    memcpy(arr_cBuffer, &uiTempInt, 4);
+
+    usTempShort = htons(m_SMessage->usGroupId);
+    memcpy((arr_cBuffer + 4), &usTempShort, 2);
+
+    usTempShort = htons(m_SMessage->usUnitId);
+    memcpy((arr_cBuffer + 6), &usTempShort, 2);
+
+    uiTempInt = htonl(m_SMessage->uiMessageLength);
+    memcpy((arr_cBuffer + 8), &uiTempInt, 4);
+
+    usTempShort = htons(m_SMessage->usOperand1);
+    memcpy((arr_cBuffer + 12), &usTempShort, 2);
+
+    usTempShort = htons(m_SMessage->usOperand2);
+    memcpy((arr_cBuffer + 14), &usTempShort, 2);
+
+    ucTempChar = m_SMessage->ucData;
+    memcpy((arr_cBuffer + 16), &ucTempChar, 1);
+
+    uiTempInt = htonl(m_SMessage->uiCheckSum);
+    memcpy((arr_cBuffer + 17), &uiTempInt, 4);
+
+    uiTempInt = htonl(m_SMessage->uiFooter);
+    memcpy((arr_cBuffer + 21), &uiTempInt, 4);
+}
+
+void DP_UnPackMessage(char *arr_cBuffer, S_MESSAGE *m_SMessage) {
+    unsigned int uiTempInt = 0;
+    unsigned short usTempShort = 0;
+    unsigned char ucTempChar = 0;
+
+    memcpy(&uiTempInt, arr_cBuffer, 4);
+    m_SMessage->uiHeader = ntohl(uiTempInt);
+
+    memcpy(&usTempShort, (arr_cBuffer + 4), 2);
+    m_SMessage->usGroupId = ntohs(usTempShort);
+    
+    memcpy(&usTempShort, (arr_cBuffer + 6), 2);
+    m_SMessage->usUnitId = ntohs(usTempShort);
+
+    memcpy(&uiTempInt, (arr_cBuffer + 8), 4);
+    m_SMessage->uiMessageLength = ntohl(uiTempInt);
+
+    memcpy(&usTempShort, (arr_cBuffer + 12), 2);
+    m_SMessage->usOperand1 = ntohs(usTempShort);
+    
+    memcpy(&usTempShort, (arr_cBuffer + 14), 2);
+    m_SMessage->usOperand2 = ntohs(usTempShort);
+
+    memcpy(&ucTempChar, (arr_cBuffer + 16), 1);
+    m_SMessage->ucData = ucTempChar;
+    
+    memcpy(&uiTempInt, (arr_cBuffer + 17), 4);
+    m_SMessage->uiCheckSum = ntohl(uiTempInt);
+
+    memcpy(&uiTempInt, (arr_cBuffer + 21), 4);
+    m_SMessage->uiFooter = ntohl(uiTempInt);
+}
+
+Server code:
+
+#include <stdio.h>
+#include <conio.h>
+#include <winsock2.h>
+#include <string.h>
+
+/*link winsock2 library*/
+#pragma comment(lib, "Ws2_32.lib")
+#pragma pack(1)
+
+#define DP_SUCCESS                0
+#define DP_FAILURE                -1
+#define DP_PORT                   8989
+#define DP_CONNECTIONS            1
+#define DP_GID_ARITHMETIC         1
+#define DP_GID_EXIT               14
+#define DP_BUFFER_SIZE            25
+#define DP_UID_ADD                101
+#define DP_UID_SUB                102
+#define DP_UID_MUL                103
+#define DP_UID_DIV                104
+#define DP_UID_MOD                105
+#define DP_HEADER                 0x1AB
+#define DP_FOOTER                 0x9CD
+
+typedef struct {
+    unsigned int uiHeader;
+    unsigned short usGroupId;
+    unsigned short usUnitId;
+    unsigned int uiMessageLength;
+    unsigned short usOperand1;
+    unsigned short usOperand2;
+    unsigned char ucData;
+    unsigned int uiCheckSum;
+    unsigned int uiFooter;
+} S_MESSAGE;
+
+void DP_ProcessMessage(S_MESSAGE *m_SMessage);
+int DP_CalculateCheckSum(S_MESSAGE *m_SMessage);
+void DP_PackMessage(char *arr_cBuffer, S_MESSAGE *m_SMessage);
+void DP_UnPackMessage(char *arr_cBuffer, S_MESSAGE *m_SMessage);
+
+int main() {
+    WSADATA wsa;
+    SOCKET skt_ServerSocket, skt_ClientSocket;
+    struct sockaddr_in m_SServer, m_SClient;
+    S_MESSAGE m_SSendMessage, m_SRecvMessage;
+    char arr_cRecvBuffer[DP_BUFFER_SIZE], arr_cSendBuffer[DP_BUFFER_SIZE];
+    int iClientAddressSize, iReceivedBytes, iBytesSent, iReturnValue;
+
+    printf("\r\n----------TCP SERVER----------\r\n");
+
+    printf("\r\nInitializing Winsock!\r\n");
+
+    /* Winsock initialization */
+    iReturnValue = WSAStartup(MAKEWORD(2, 2), &wsa);
+    if (iReturnValue != 0) {
+        printf("\r\nError: Winsock not Initialized. Code: %d\r\n", WSAGetLastError());
+        return DP_FAILURE;
+    }
+
+    printf("\r\nWinsock Initialized!\r\n");
+
+    /* Create server socket */
+    skt_ServerSocket = socket(AF_INET, SOCK_STREAM, 0);
+    if (skt_ServerSocket == INVALID_SOCKET) {
+        printf("\r\nError Creating Socket! Code: %d\r\n", WSAGetLastError());
+        WSACleanup();
+        return DP_FAILURE;
+    }
+
+    printf("\r\nTCP Server Socket Created!\r\n");
+
+    m_SServer.sin_family = AF_INET;
+    m_SServer.sin_addr.s_addr = INADDR_ANY;
+    m_SServer.sin_port = htons(DP_PORT);
+
+    /* Bind the server socket */
+    iReturnValue = bind(skt_ServerSocket, (struct sockaddr*)&m_SServer, sizeof(m_SServer));
+    if (iReturnValue == SOCKET_ERROR) {
+        printf("\r\nBind Error! Code: %d\r\n", WSAGetLastError());
+        closesocket(skt_ServerSocket);
+        WSACleanup();
+        return DP_FAILURE;
+    }
+
+    printf("\r\nBind to the Port Number: %d\r\n", DP_PORT);
+
+    /* Listen for incoming client connections */
+    iReturnValue = listen(skt_ServerSocket, DP_CONNECTIONS);
+    if (iReturnValue == SOCKET_ERROR) {
+        printf("\r\nError While Listening! Code: %d\r\n", WSAGetLastError());
+        closesocket(skt_ServerSocket);
+        WSACleanup();
+        return DP_FAILURE;
+    }
+
+    printf("\r\nServer is listening for incoming connections...\r\n");
+
+    iClientAddressSize = sizeof(m_SClient);
+
+    while (1) {
+        printf("\r\nWaiting to Accept Client...\r\n");
+        skt_ClientSocket = accept(skt_ServerSocket, (struct sockaddr*)&m_SClient, &iClientAddressSize);
+        if (skt_ClientSocket == INVALID_SOCKET) {
+            printf("\r\nError Accepting Connection! Code: %d\r\n", WSAGetLastError());
+            /* Keep waiting for new connections */
+            continue;
+        }
+
+        printf("\r\nClient Connected!\r\n");
+
+        while (1) {
+            /* Receive data from client */
+            iReceivedBytes = recv(skt_ClientSocket, arr_cRecvBuffer, sizeof(arr_cRecvBuffer), 0);
+            if (iReceivedBytes == SOCKET_ERROR) {
+                printf("\r\nError in Receiving Message! Code: %d\r\n", WSAGetLastError());
+                /* Error, break the loop */
+                break;
+            }
+
+            /* Handle empty message */
+            if (iReceivedBytes == 0) {
+                printf("\r\nClient disconnected, received empty message.\r\n");
+                /* Client disconnected */
+                break;
+            }
+
+            DP_UnPackMessage(arr_cRecvBuffer, &m_SRecvMessage);
+
+            printf("\r\nMessage received with operation unit id %d\r\n", m_SRecvMessage.usUnitId);
+
+            /* Process message */
+            DP_ProcessMessage(&m_SRecvMessage);
+
+            printf("\r\nOperation result: %d\r\n", m_SRecvMessage.ucData);
+
+            /* Check if client message is exit */
+            if (m_SRecvMessage.usGroupId == DP_GID_EXIT) {
+                printf("\r\nClient requested to close the connection.\r\n");
+                break;
+            }
+
+            if ((m_SRecvMessage.uiHeader == DP_HEADER) && (m_SRecvMessage.uiFooter == DP_FOOTER) && 
+                (m_SRecvMessage.uiCheckSum == DP_CalculateCheckSum(&m_SRecvMessage))) {
+                m_SSendMessage.uiHeader = DP_HEADER;
+                m_SSendMessage.usGroupId = m_SRecvMessage.usGroupId;
+                m_SSendMessage.usUnitId = m_SRecvMessage.usUnitId;
+                m_SSendMessage.uiMessageLength = m_SRecvMessage.uiMessageLength;
+                m_SSendMessage.usOperand1 = m_SRecvMessage.usOperand1;
+                m_SSendMessage.usOperand2 = m_SRecvMessage.usOperand2;
+                m_SSendMessage.ucData = m_SRecvMessage.ucData;
+                m_SSendMessage.uiFooter = DP_FOOTER;
+                m_SSendMessage.uiCheckSum = DP_CalculateCheckSum(&m_SSendMessage);
+
+                DP_PackMessage(arr_cSendBuffer, &m_SSendMessage);
+
+                /* Send response to the client */
+                iBytesSent = send(skt_ClientSocket, arr_cSendBuffer, sizeof(arr_cSendBuffer), 0);
+                if (iBytesSent == SOCKET_ERROR) {
+                    printf("\r\nError Sending Data! Code: %d\r\n", WSAGetLastError());
+                    /* Error, break loop */
+                    break;
+                }
+            } else {
+                printf("\r\nInvalid Message Received!\r\n");
+            }
+        }
+
+        /* Close client connection */
+        iReturnValue = closesocket(skt_ClientSocket);
+        if (iReturnValue != 0) {
+            printf("\r\nFailed to close socket. Error Code: %d\r\n", WSAGetLastError());
+            WSACleanup();
+            return DP_FAILURE;
+        }
+
+        printf("\r\nClient disconnected.\r\n");
+    }
+
+    /* Close server socket */
+    iReturnValue = closesocket(skt_ServerSocket);
+    if (iReturnValue != 0) {
+        printf("\r\nFailed to close socket. Error Code: %d\r\n", WSAGetLastError());
+        WSACleanup();
+        return DP_FAILURE;
+    }
+
+    /* Perform cleanup */
+    WSACleanup();
+
+    getch();
+    return DP_SUCCESS;
+}
+
+void DP_ProcessMessage(S_MESSAGE *m_SMessage) {
+    if (m_SMessage->usGroupId == DP_GID_ARITHMETIC) {
+        switch (m_SMessage->usUnitId) {
+            case DP_UID_ADD:
+                m_SMessage->ucData = m_SMessage->usOperand1 + m_SMessage->usOperand2;
+                break;
+            case DP_UID_SUB:
+                m_SMessage->ucData = m_SMessage->usOperand1 - m_SMessage->usOperand2;
+                break;
+            case DP_UID_MUL:
+                m_SMessage->ucData = m_SMessage->usOperand1 * m_SMessage->usOperand2;
+                break;
+            case DP_UID_DIV:
+                m_SMessage->ucData = m_SMessage->usOperand1 / m_SMessage->usOperand2;
+                break;
+            case DP_UID_MOD:
+                m_SMessage->ucData
+
+duck duck go:
+
+#include <stdio.h>
+#include <string.h>
+#include <winsock2.h>
+#include <windows.h>
+#include <stdbool.h>
+
+#pragma comment(lib, "Ws2_32.lib")
+#pragma pack(1)
+
+/* Constants */
+#define DP_PORT             8989
+#define DP_IP              "127.0.0.1"
+#define DP_SUCCESS         0
+#define DP_FAILURE         -1
+#define DP_INVALID_SOCKET  -99
+#define DP_MAX_RETRIES     10
+#define DP_RETRY_DELAY     1000
+#define DP_BUFFER_SIZE     25
+#define DP_HEADER          0x1AB
+#define DP_FOOTER          0x9CD
+
+/* Message Structure */
+typedef struct {
+    unsigned int    uiHeader;
+    unsigned short  usGroupId;
+    unsigned short  usUnitId;
+    unsigned int    uiMessageLength;
+    unsigned short  usOperand1;
+    unsigned short  usOperand2;
+    unsigned char   ucData;
+    unsigned int    uiCheckSum;
+    unsigned int    uiFooter;
+} S_MESSAGE;
+
+/* Function Prototypes */
+static int  DP_InitializeWinsock(void);
+static int  DP_CreateSocket(SOCKET *socket);
+static int  DP_ConnectToServer(SOCKET socket, const char *ip, unsigned short port);
+static int  DP_SendMessage(SOCKET socket, const S_MESSAGE *message);
+static int  DP_ReceiveMessage(SOCKET socket, S_MESSAGE *message);
+static int  DP_CalculateCheckSum(const S_MESSAGE *message);
+static void DP_PackMessage(char *buffer, const S_MESSAGE *message);
+static void DP_UnPackMessage(const char *buffer, S_MESSAGE *message);
+static bool DP_ValidateMessage(const S_MESSAGE *message);
+
+int main(void) {
+    SOCKET clientSocket = DP_INVALID_SOCKET;
+    int retryCount = 0;
+    S_MESSAGE sendMessage = {0}, recvMessage = {0};
+    
+    printf("\n----------TCP CLIENT----------\n");
+
+    /* Initialize Winsock */
+    if (DP_InitializeWinsock() != DP_SUCCESS) {
+        return DP_FAILURE;
+    }
+
+    while (1) {
+        /* Create socket */
+        if (DP_CreateSocket(&clientSocket) != DP_SUCCESS) {
+            WSACleanup();
+            return DP_FAILURE;
+        }
+
+        /* Connect to server with retry mechanism */
+        while (retryCount < DP_MAX_RETRIES) {
+            if (DP_ConnectToServer(clientSocket, DP_IP, DP_PORT) == DP_SUCCESS) {
+                printf("\nConnected to Server after %d retries\n", retryCount);
+                break;
+            }
+            
+            retryCount++;
+            printf("\nConnection attempt %d/%d failed...\n", retryCount, DP_MAX_RETRIES);
+            
+            if (retryCount == DP_MAX_RETRIES) {
+                printf("\nMax retry attempts reached. Exiting...\n");
+                closesocket(clientSocket);
+                WSACleanup();
+                return DP_FAILURE;
+            }
+
+            Sleep(DP_RETRY_DELAY);
+        }
+
+        /* Prepare message */
+        sendMessage.uiHeader = DP_HEADER;
+        sendMessage.usGroupId = 1;
+        sendMessage.usUnitId = 101;
+        sendMessage.uiMessageLength = sizeof(sendMessage.usOperand1) + sizeof(sendMessage.usOperand2);
+        sendMessage.usOperand1 = 10;
+        sendMessage.usOperand2 = 20;
+        sendMessage.ucData = 0;
+        sendMessage.uiFooter = DP_FOOTER;
+        sendMessage.uiCheckSum = DP_CalculateCheckSum(&sendMessage);
+
+        /* Send message and receive response */
+        if (DP_SendMessage(clientSocket, &sendMessage) != DP_SUCCESS) {
+            break;
+        }
+
+        if (DP_ReceiveMessage(clientSocket, &recvMessage) != DP_SUCCESS) {
+            break;
+        }
+
+        /* Validate and process received message */
+        if (DP_ValidateMessage(&recvMessage)) {
+            printf("\nOperation result from server: %d\n", recvMessage.ucData);
+        } else {
+            printf("\nInvalid response received from server!\n");
+        }
+
+        /* Clean up */
+        closesocket(clientSocket);
+        break;
+    }
+
+    WSACleanup();
+    return DP_SUCCESS;
+}
+
+static int DP_InitializeWinsock(void) {
+    WSADATA wsa = {0};
+    
+    printf("\nInitializing Winsock...\n");
+    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
+        printf("\nError: Winsock initialization failed. Error Code: %d\n", WSAGetLastError());
+        return DP_FAILURE;
+    }
+    
+    printf("\nWinsock Initialized...\n");
+    return DP_SUCCESS;
+}
+
+static int DP_CreateSocket(SOCKET *socket) {
+    *socket = socket(AF_INET, SOCK_STREAM, 0);
+    if (*socket == INVALID_SOCKET) {
+        printf("\nSocket creation failed. Error Code: %d\n", WSAGetLastError());
+        return DP_FAILURE;
+    }
+    
+    printf("\nTCP Client Socket Created!\n");
+    return DP_SUCCESS;
+}
+
+static int DP_ConnectToServer(SOCKET socket, const char *ip, unsigned short port) {
+    struct sockaddr_in server = {0};
+    
+    server.sin_family = AF_INET;
+    server.sin_addr.s_addr = inet_addr(ip);
+    server.sin_port = htons(port);
+    
+    return connect(socket, (struct sockaddr*)&server, sizeof(server));
+}
+
+static int DP_SendMessage(SOCKET socket, const S_MESSAGE *message) {
+    char buffer[DP_BUFFER_SIZE] = {0};
+    
+    DP_PackMessage(buffer, message);
+    if (send(socket, buffer, sizeof(buffer), 0) == SOCKET_ERROR) {
+        printf("\nSend failed. Error Code: %d\n", WSAGetLastError());
+        return DP_FAILURE;
+    }
+    
+    return DP_SUCCESS;
+}
+
+static int DP_ReceiveMessage(SOCKET socket, S_MESSAGE *message) {
+    char buffer[DP_BUFFER_SIZE] = {0};
+    
+    if (recv(socket, buffer, sizeof(buffer), 0) == SOCKET_ERROR) {
+        printf("\nReceive failed. Error Code: %d\n", WSAGetLastError());
+        return DP_FAILURE;
+    }
+    
+    DP_UnPackMessage(buffer, message);
+    return DP_SUCCESS;
+}
+
+static int DP_CalculateCheckSum(const S_MESSAGE *message) {
+    return message->uiHeader + message->usGroupId + message->usUnitId + 
+           message->uiMessageLength + message->usOperand1 + message->usOperand2 + 
+           message->uiFooter;
+}
+
+static void DP_PackMessage(char *buffer, const S_MESSAGE *message) {
+    unsigned int uiTemp;
+    unsigned short usTemp;
+    
+    uiTemp = htonl(message->uiHeader);
+    memcpy(buffer, &uiTemp, sizeof(unsigned int));
+    
+    usTemp = htons(message->usGroupId);
+    memcpy(buffer + 4, &usTemp, sizeof(unsigned short));
+    
+    usTemp = htons(message->usUnitId);
+    memcpy(buffer + 6, &usTemp, sizeof(unsigned short));
+    
+    uiTemp = htonl(message->uiMessageLength);
+    memcpy(buffer + 8, &uiTemp, sizeof(unsigned int));
+    
+    usTemp = htons(message->usOperand1);
+    memcpy(buffer + 12, &usTemp, sizeof(unsigned short));
+    
+    usTemp = htons(message->usOperand2);
+    memcpy(buffer + 14, &usTemp, sizeof(unsigned short));
+    
+    memcpy(buffer + 16, &message->ucData, sizeof(unsigned char));
+    
+    uiTemp = htonl(message->uiCheckSum);
+    memcpy(buffer + 17, &uiTemp, sizeof(unsigned int));
+    
+    uiTemp = htonl(message->uiFooter);
+    memcpy(buffer + 21, &uiTemp, sizeof(unsigned int));
+}
+
+static void DP_UnPackMessage(const char *buffer, S_MESSAGE *message) {
+    unsigned int uiTemp;
+    unsigned short usTemp;
+    
+    memcpy(&uiTemp, buffer, sizeof(unsigned int));
+    message->uiHeader = ntohl(uiTemp);
+    
+    memcpy(&usTemp, buffer + 4, sizeof(unsigned short));
+    message->usGroupId = ntohs(usTemp);
+    
+    memcpy(&usTemp, buffer + 6, sizeof(unsigned short));
+    message->usUnitId = ntohs(usTemp);
+    
+    memcpy(&uiTemp, buffer + 8, sizeof(unsigned int));
+    message->uiMessageLength = ntohl(uiTemp);
+    
+    memcpy(&usTemp, buffer + 12, sizeof(unsigned short));
+    message->usOperand1 = ntohs(usTemp);
+    
+    memcpy(&usTemp, buffer + 14, sizeof(unsigned short));
+    message->usOperand2 = ntohs(usTemp);
+    
+    memcpy(&message->ucData, buffer + 16, sizeof(unsigned char));
+    
+    memcpy(&uiTemp, buffer + 17, sizeof(unsigned int));
+    message->uiCheckSum = ntohl(uiTemp);
+    
+    memcpy(&uiTemp, buffer + 21, sizeof(unsigned int));
+    message->uiFooter = ntohl(uiTemp);
+}
+
+static bool DP_ValidateMessage(const S_MESSAGE *message) {
+    return (message->uiHeader == DP_HEADER && 
+            message->uiFooter == DP_FOOTER && 
+            (signed)message->uiCheckSum == DP_CalculateCheckSum(message));
+}
+
+server:
+
+#include <stdio.h>
+#include <winsock2.h>
+#include <stdbool.h>
+#include <windows.h>
+
+/* Link with winsock2 library */
+#pragma comment(lib, "Ws2_32.lib")
+#pragma pack(1)
+
+/* Constants */
+#define DP_SUCCESS          0
+#define DP_FAILURE         -1
+#define DP_PORT            8989
+#define DP_CONNECTIONS     1
+#define DP_BUFFER_SIZE     25
+
+/* Message Group IDs */
+#define DP_GID_ARITHMETIC  1
+#define DP_GID_EXIT        14
+
+/* Operation Unit IDs */
+#define DP_UID_ADD         101
+#define DP_UID_SUB         102
+#define DP_UID_MUL         103
+#define DP_UID_DIV         104
+#define DP_UID_MOD         105
+
+/* Protocol Headers */
+#define DP_HEADER          0x1AB
+#define DP_FOOTER          0x9CD
+
+/* Message Structure */
+typedef struct {
+    unsigned int    uiHeader;
+    unsigned short  usGroupId;
+    unsigned short  usUnitId;
+    unsigned int    uiMessageLength;
+    unsigned short  usOperand1;
+    unsigned short  usOperand2;
+    unsigned char   ucData;
+    unsigned int    uiCheckSum;
+    unsigned int    uiFooter;
+} S_MESSAGE;
+
+/* Function Prototypes */
+static int  DP_InitializeWinsock(void);
+static int  DP_CreateServerSocket(SOCKET *serverSocket);
+static int  DP_BindSocket(SOCKET serverSocket);
+static int  DP_StartListening(SOCKET serverSocket);
+static int  DP_AcceptConnection(SOCKET serverSocket, SOCKET *clientSocket);
+static int  DP_HandleClientConnection(SOCKET clientSocket);
+static void DP_ProcessMessage(S_MESSAGE *message);
+static int  DP_CalculateCheckSum(const S_MESSAGE *message);
+static void DP_PackMessage(char *buffer, const S_MESSAGE *message);
+static void DP_UnPackMessage(const char *buffer, S_MESSAGE *message);
+static bool DP_ValidateMessage(const S_MESSAGE *message);
+static void DP_CloseSocket(SOCKET socket);
+
+int main(void) {
+    SOCKET serverSocket = INVALID_SOCKET;
+    SOCKET clientSocket = INVALID_SOCKET;
+    
+    printf("\n----------TCP SERVER----------\n");
+    
+    /* Initialize Winsock */
+    if (DP_InitializeWinsock() != DP_SUCCESS) {
+        return DP_FAILURE;
+    }
+    
+    /* Create server socket */
+    if (DP_CreateServerSocket(&serverSocket) != DP_SUCCESS) {
+        WSACleanup();
+        return DP_FAILURE;
+    }
+    
+    /* Bind socket */
+    if (DP_BindSocket(serverSocket) != DP_SUCCESS) {
+        DP_CloseSocket(serverSocket);
+        WSACleanup();
+        return DP_FAILURE;
+    }
+    
+    /* Start listening */
+    if (DP_StartListening(serverSocket) != DP_SUCCESS) {
+        DP_CloseSocket(serverSocket);
+        WSACleanup();
+        return DP_FAILURE;
+    }
+    
+    printf("\nServer is listening for incoming connections...\n");
+    
+    /* Main server loop */
+    while (1) {
+        /* Accept client connection */
+        if (DP_AcceptConnection(serverSocket, &clientSocket) != DP_SUCCESS) {
+            continue;  // Try to accept next connection
+        }
+        
+        printf("\nClient Connected!\n");
+        
+        /* Handle client communication */
+        DP_HandleClientConnection(clientSocket);
+        
+        /* Close client socket */
+        DP_CloseSocket(clientSocket);
+        printf("\nClient disconnected.\n");
+    }
+    
+    /* Cleanup */
+    DP_CloseSocket(serverSocket);
+    WSACleanup();
+    
+    return DP_SUCCESS;
+}
+
+static int DP_InitializeWinsock(void) {
+    WSADATA wsa = {0};
+    
+    printf("\nInitializing Winsock...\n");
+    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
+        printf("\nError: Winsock initialization failed. Error Code: %d\n", WSAGetLastError());
+        return DP_FAILURE;
+    }
+    
+    printf("\nWinsock Initialized!\n");
+    return DP_SUCCESS;
+}
+
+static int DP_CreateServerSocket(SOCKET *serverSocket) {
+    *serverSocket = socket(AF_INET, SOCK_STREAM, 0);
+    if (*serverSocket == INVALID_SOCKET) {
+        printf("\nError Creating Socket! Error Code: %d\n", WSAGetLastError());
+        return DP_FAILURE;
+    }
+    
+    printf("\nTCP Server Socket Created!\n");
+    return DP_SUCCESS;
+}
+
+static int DP_BindSocket(SOCKET serverSocket) {
+    struct sockaddr_in server = {0};
+    
+    server.sin_family = AF_INET;
+    server.sin_addr.s_addr = INADDR_ANY;
+    server.sin_port = htons(DP_PORT);
+    
+    if (bind(serverSocket, (struct sockaddr*)&server, sizeof(server)) == SOCKET_ERROR) {
+        printf("\nBind Error! Error Code: %d\n", WSAGetLastError());
+        return DP_FAILURE;
+    }
+    
+    printf("\nBound to Port Number: %d\n", DP_PORT);
+    return DP_SUCCESS;
+}
+
+static int DP_StartListening(SOCKET serverSocket) {
+    if (listen(serverSocket, DP_CONNECTIONS) == SOCKET_ERROR) {
+        printf("\nError While Listening! Error Code: %d\n", WSAGetLastError());
+        return DP_FAILURE;
+    }
+    return DP_SUCCESS;
+}
+
+static int DP_AcceptConnection(SOCKET serverSocket, SOCKET *clientSocket) {
+    struct sockaddr_in client = {0};
+    int clientAddressSize = sizeof(client);
+    
+    printf("\nWaiting to Accept Client...\n");
+    *clientSocket = accept(serverSocket, (struct sockaddr*)&client, &clientAddressSize);
+    
+    if (*clientSocket == INVALID_SOCKET) {
+        printf("\nError Accepting Connection! Error Code: %d\n", WSAGetLastError());
+        return DP_FAILURE;
+    }
+    
+    return DP_SUCCESS;
+}
+
+static int DP_HandleClientConnection(SOCKET clientSocket) {
+    char recvBuffer[DP_BUFFER_SIZE] = {0};
+    char sendBuffer[DP_BUFFER_SIZE] = {0};
+    S_MESSAGE recvMessage = {0};
+    S_MESSAGE sendMessage = {0};
+    int bytesReceived;
+    
+    while (1) {
+        /* Receive data from client */
+        bytesReceived = recv(clientSocket, recvBuffer, sizeof(recvBuffer), 0);
+        if (bytesReceived == SOCKET_ERROR) {
+            printf("\nError in Receiving Message! Error Code: %d\n", WSAGetLastError());
+            break;
+        }
+        
+        if (bytesReceived == 0) {
+            printf("\nClient disconnected, received empty message.\n");
+            break;
+        }
+        
+        /* Unpack and process message */
+        DP_UnPackMessage(recvBuffer, &recvMessage);
+        
+        printf("\nMessage received with operation unit id %d\n", recvMessage.usUnitId);
+        
+        /* Check if client wants to exit */
+        if (recvMessage.usGroupId == DP_GID_EXIT) {
+            printf("\nClient requested to close the connection.\n");
+            break;
+        }
+        
+        /* Validate and process message */
+        if (DP_ValidateMessage(&recvMessage)) {
+            DP_ProcessMessage(&recvMessage);
+            
+            /* Prepare response message */
+            sendMessage = recvMessage;  // Copy received message
+            sendMessage.uiCheckSum = DP_CalculateCheckSum(&sendMessage);
+            
+            /* Pack and send response */
+            DP_PackMessage(sendBuffer, &sendMessage);
+            if (send(clientSocket, sendBuffer, sizeof(sendBuffer), 0) == SOCKET_ERROR) {
+                printf("\nError Sending Data! Error Code: %d\n", WSAGetLastError());
+                break;
+            }
+        } else {
+            printf("\nInvalid Message Received!\n");
+        }
+    }
+    
+    return DP_SUCCESS;
+}
+
+static void DP_ProcessMessage(S_MESSAGE *message) {
+    if (message->usGroupId == DP_GID_ARITHMETIC) {
+        switch (message->usUnitId) {
+            case DP_UID_ADD:
+                message->ucData = message->usOperand1 + message->usOperand2;
+                break;
+            case DP_UID_SUB:
+                message->ucData = message->usOperand1 - message->usOperand2;
+                break;
+            case DP_UID_MUL:
+                message->ucData = message->usOperand1 * message->usOperand2;
+                break;
+            case DP_UID_DIV:
+                if (message->usOperand2 != 0) {
+                    message->ucData = message->usOperand1 / message->usOperand2;
+                } else {
+                    message->ucData = 0;  // Handle division by zero
+                }
+                break;
+            case DP_UID_MOD:
+                if (message->usOperand2 != 0) {
+                    message->ucData = message->usOperand1 % message->usOperand2;
+                } else {
+                    message->ucData = 0;  // Handle modulo by zero
+                }
+                break;
+            default:
+                message->ucData = 0;
+                break;
+        }
+    }
+}
+
+static bool DP_ValidateMessage(const S_MESSAGE *message) {
+    return (message->uiHeader == DP_HEADER && 
+            message->uiFooter == DP_FOOTER && 
+            (signed)message->uiCheckSum == DP_CalculateCheckSum(message));
+}
+
+static int DP_CalculateCheckSum(const S_MESSAGE *message) {
+    return message->uiHeader + message->usGroupId + message->usUnitId + 
+           message->uiMessageLength + message->usOperand1 + message->usOperand2 + 
+           message->uiFooter;
+}
+
+static void DP_PackMessage(char *buffer, const S_MESSAGE *message) {
+    unsigned int uiTemp;
+    unsigned short usTemp;
+    
+    uiTemp = htonl(message->uiHeader);
+    memcpy(buffer, &uiTemp, sizeof(unsigned int));
+    
+    usTemp = htons(message->usGroupId);
+    memcpy(buffer + 4, &usTemp, sizeof(unsigned short));
+    
+    usTemp = htons(message->usUnitId);
+    memcpy(buffer + 6, &usTemp, sizeof(unsigned short));
+    
+    uiTemp = htonl(message->uiMessageLength);
+    memcpy(buffer + 8, &uiTemp, sizeof(unsigned int));
+    
+    usTemp = htons(message->usOperand1);
+    memcpy(buffer + 12, &usTemp, sizeof(unsigned short));
+    
+    usTemp = htons(message->usOperand2);
+    memcpy(buffer + 14, &usTemp, sizeof(unsigned short));
+    
+    memcpy(buffer + 16, &message->ucData, sizeof(unsigned char));
+    
+    uiTemp = htonl(message->uiCheckSum);
+    memcpy(buffer + 17, &uiTemp, sizeof(unsigned int));
+    
+    uiTemp = htonl(message->uiFooter);
+    memcpy(buffer + 21, &uiTemp, sizeof(unsigned int));
+}
+
+static void DP_UnPackMessage(const char *buffer, S_MESSAGE *message) {
+    unsigned int uiTemp;
+    unsigned short usTemp;
+    
+    memcpy(&uiTemp, buffer, sizeof(unsigned int));
+    message->uiHeader = ntohl(uiTemp);
+    
+    memcpy(&usTemp, buffer + 4, sizeof(unsigned short));
+    message->usGroupId = ntohs(usTemp);
+    
+    memcpy(&usTemp, buffer + 6, sizeof(unsigned short));
+    message->usUnitId = ntohs(usTemp);
+    
+    memcpy(&uiTemp, buffer + 8, sizeof(unsigned int));
+    message->uiMessageLength = ntohl(uiTemp);
+    
+    memcpy(&usTemp, buffer + 12, sizeof(unsigned short));
+    message->usOperand1 = ntohs(usTemp);
+    
+    memcpy(&usTemp, buffer + 14, sizeof(unsigned short));
+    message->usOperand2 = ntohs(usTemp);
+    
+    memcpy(&message->ucData, buffer + 16, sizeof(unsigned char));
+    
+    memcpy(&uiTemp, buffer + 17, sizeof(unsigned int));
+    message->uiCheckSum = ntohl(uiTemp);
+    
+    memcpy(&uiTemp, buffer + 21, sizeof(unsigned int));
+    message->uiFooter = ntohl(uiTemp);
+}
+
+static void DP_CloseSocket(SOCKET socket) {
+    if (closesocket(socket) != 0) {
+        printf("\nFailed to close socket. Error Code: %d\n", WSAGetLastError());
+    }
+}
